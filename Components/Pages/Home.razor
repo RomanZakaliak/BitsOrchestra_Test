@@ -1,0 +1,122 @@
+﻿@page "/"
+@rendermode InteractiveServer
+
+@using Microsoft.AspNetCore.Components.QuickGrid
+
+@using BitsOrchestra_Test.Data.Services
+@using BitsOrchestra_Test.Models
+
+@inject IEmployeeService employeeService
+
+<PageTitle>Home</PageTitle>
+
+<h1>Employees</h1>
+
+<div class="container">
+    <div class="w-50 mb-4" hidden=@(editingEmployee?.ID < 1)>
+        <EditForm Model="@(editingEmployee)" OnSubmit="@(UpdateEmployee)" Enhance class="row gy-2 gx-3 align-items-center">
+            
+            <div class="col-md-6">
+                <label class="form-label">Name</label>
+                <InputText @bind-Value="editingEmployee.Name" class="form-control" />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Date of Birth</label>
+                <InputDate @bind-Value="editingEmployee.BirthDate" class="form-control" />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Phone</label>
+                <InputText @bind-Value="editingEmployee.Phone" class="form-control" />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Salary</label>
+                <InputNumber @bind-Value="editingEmployee.Salary" class="form-control" />
+            </div>
+
+            <div class="col-md-3">
+                <div class="form-check">
+                    <InputCheckbox @bind-Value="editingEmployee.Maried" class="form-check-input" />
+                    <label class="form-check-label">Married</label>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </div>
+
+        </EditForm>
+    </div>
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-body">
+                    <QuickGrid Items="employees">
+                        <PropertyColumn Property="@(e => e.Name)" Sortable="true" />
+                        <PropertyColumn Property="@(e => e.BirthDate)" Sortable="true" Format="dd-MM-yyyy" />
+                        <PropertyColumn Property="@(e => e.Maried ? "Yes" : "No")" Sortable="true" />
+                        <PropertyColumn Property="@(e => e.Phone)" Sortable="true" />
+                        <PropertyColumn Property="@(e => e.Salary)" Sortable="true" Format="00.0#$"/>
+                        <TemplateColumn Title="Actions">
+                            <button onclick="@(() => EditEmployee(context))" class="btn btn-info">Edit</button>
+                            <button onclick="@(() => DeleteEmployee(context))" class="btn btn-danger">Delete</button>
+                        </TemplateColumn>
+                    </QuickGrid>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+@code {
+    private IQueryable<Employee> employees;
+    private Employee editingEmployee = new Employee();
+
+    protected override async Task OnInitializedAsync()
+    {
+        employees = (await employeeService.GetAllEmployeesAsync()).AsQueryable();
+    }
+
+    private void EditEmployee(Employee employee)
+    {
+        editingEmployee = employee;
+        StateHasChanged();
+    }
+
+    private void DeleteEmployee(Employee employee)
+    {
+        var isSuccessfull = Task.Run(async () => await employeeService.DeleteEmployeeAsync(employee.ID)).Result;
+        if (isSuccessfull)
+        {
+            UpdateEmployeesSource(employee, true);
+        }        
+    }
+
+    private void UpdateEmployee()
+    {
+        if (editingEmployee.ID < 1) return;
+
+        var isSuccessfull = Task.Run(async () => await employeeService.UpdateEmployeeAsync(editingEmployee)).Result;
+
+        if(isSuccessfull)            
+            UpdateEmployeesSource(editingEmployee);
+
+        editingEmployee = new Employee();
+    }
+
+    private void UpdateEmployeesSource(Employee employee, bool removeOnly = false)
+    {
+        var employeesList = employees.ToList();
+        employeesList.Remove(employeesList.First(e => e.ID == employee.ID));
+
+        if (!removeOnly)
+            employeesList.Add(employee);
+
+        employees = employeesList.AsQueryable();
+
+        StateHasChanged();
+    }
+}

@@ -1,0 +1,85 @@
+﻿@page "/fileuploader"
+@rendermode InteractiveServer
+
+@using BitsOrchestra_Test.Data.Services
+@using BitsOrchestra_Test.Helpers
+@using BitsOrchestra_Test.Models.ViewModels
+
+@inject IEmployeeService employeeService
+
+<h3>FileUploader</h3>
+
+<div class="mb-3">
+    <InputFile OnChange="FileUpload" hidden="@IsUploadingProcess" accept=".csv" class="form-control"/>
+</div>
+
+
+@if(file is not null)
+{
+    <div>
+        @file.FileName
+        <progress value="@file.UploadedBytes" max="@file.Size"></progress>
+        @file.UploadedPercentage.ToString("F1")%
+    </div>
+}
+
+<div class="alert alert-danger" role="alert" hidden="@String.IsNullOrEmpty(ErrorText)">
+    <p>An error occurred:</p>
+    @ErrorText
+</div>
+
+@code {
+    FileUploadProgress? file = null;
+    bool IsUploadingProcess = false;
+    string ErrorText = string.Empty;
+
+
+    private async Task FileUpload(InputFileChangeEventArgs e)
+    {
+        IsUploadingProcess = true;
+
+        file = new(e.File.Name, e.File.Size);
+
+        await using var timer = new Timer(_ => InvokeAsync(() => StateHasChanged()));
+        timer.Change(TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(500));
+
+        byte[]? fileBytes = null;
+
+        byte[] buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(4096);
+        try
+        {
+            using var stream = e.File.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            using var memoryStream = new MemoryStream();
+
+            while(await stream.ReadAsync(buffer) is int read && read > 0)
+            {
+                file.UploadedBytes += read;
+                var readData = buffer.AsMemory().Slice(0, read);
+
+                memoryStream.Write(readData.ToArray(), 0, read);
+            }
+
+            fileBytes = memoryStream.ToArray();
+
+            var employees = await Helpers.CSVHelper.GetEmployeesFromByteArray(fileBytes);
+
+            foreach(var employee in employees)
+            {
+                if (employee is null) continue;
+
+                await employeeService.AddEmployeeAsync(employee);
+            }
+        }
+        catch(Exception ex)
+        {
+            ErrorText = ex.Message;
+        }
+        finally
+        {
+            System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
+            StateHasChanged();
+        }
+
+        IsUploadingProcess = false;
+    }
+}
